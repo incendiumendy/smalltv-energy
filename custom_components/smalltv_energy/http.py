@@ -13,8 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class SmallTVFeedView(HomeAssistantView):
-    """Liefert das JSON, das die ESP8266-Firmware erwartet."""
-
     url = "/api/smalltv_energy/feed"
     name = "api:smalltv_energy:feed"
     requires_auth = False
@@ -28,9 +26,7 @@ class SmallTVFeedView(HomeAssistantView):
 
         match = None
         for entry_id, data in store.items():
-            if not isinstance(data, dict):
-                continue
-            if "key" not in data:
+            if not isinstance(data, dict) or "key" not in data:
                 continue
             if want_entry and entry_id != want_entry:
                 continue
@@ -48,9 +44,10 @@ class SmallTVFeedView(HomeAssistantView):
             hours = max(1, min(48, int(float(request.query.get("w", "24").rstrip("h")))))
         except ValueError:
             pass
+        debug = request.query.get("debug") in ("1", "true", "yes")
 
         try:
-            payload = await build_payload(hass, entities, hours)
+            payload = await build_payload(hass, entities, hours, debug)
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("SmallTV: Payload-Fehler")
             return web.json_response({"error": str(err)[:160]}, status=500)

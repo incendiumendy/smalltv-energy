@@ -13,9 +13,10 @@ from .const import HIST_TTL, POINTS, SCALE_STEPS, STATE_TTL
 _LOGGER = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[float, dict]] = {}
+_debug: dict[str, dict] = {}
 
 
-def _split(hours: int) -> str:
+def _ck(hours: int) -> str:
     return f"h{hours}"
 
 
@@ -29,7 +30,6 @@ def _num(state, default=None):
 
 
 def read_states(hass: HomeAssistant, cfg: dict) -> dict:
-    """Momentanwerte aus dem HA-State-Machine (mit kurzem Cache)."""
     key = "states:" + ",".join(f"{k}={v}" for k, v in sorted(cfg.items()))
     hit = _cache.get(key)
     if hit and time.time() - hit[0] < STATE_TTL:
@@ -38,28 +38,33 @@ def read_states(hass: HomeAssistant, cfg: dict) -> dict:
     out = {}
     for fld, eid in cfg.items():
         st = hass.states.get(eid) if eid else None
-        if st is None:
-            out[fld] = {"v": None, "t": ""}
-            continue
         out[fld] = {
             "v": _num(st),
-            "t": st.last_updated.isoformat() if st.last_updated else "",
+            "t": st.last_updated.isoformat() if (st and st.last_updated) else "",
         }
     _cache[key] = (time.time(), out)
     return out
 
 
-def _history_rows(hass: HomeAssistant, start, end, ids):
-    """Signifikante States aus dem Recorder (synchron, im Executor aufrufen)."""
+def _ts(value) -> float:
+    """Zeitstempel aus datetime oder Unix-Float."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    return value.timestamp()
+
+
+def _stats_sync(hass, start, end, ids):
+    """5-Minuten-Mittelwerte aus der Langzeit-Statistik."""
+    from homeassistant.components.recorder.statistics import statistics_during_period
+
+    return statistics_during_period(hass, start, end, set(ids), "5minute", None, {"mean"})
+
+
+def _states_sync(hass, start, end, ids):
+    """Rohzustände aus dem Recorder (Fallback)."""
     from homeassistant.components.recorder.history import get_significant_states
 
-    try:
-        return get_significant_states(
-            hass, start, end, ids, minimal_response=True, no_attributes=True
-        )
-    except TypeError:
-        # aeltere/neuere Signatur
-        return get_significant_states(hass, start_time=start, end_time=end, entity_ids=ids)
+    return get_significant_states(hass, start, end, ids, minimal_response=False, no_attributes=True)
 
 
 async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
@@ -71,30 +76,51 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
 
     now = dt_util.utcnow()
     start = now - dt.timedelta(hours=hours)
-    ids = [cfg.get("pv"), cfg.get("pv_ac"), cfg.get("grid")]
-    ids = [i for i in ids if i]
+    ids = [i for i in (cfg.get("pv"), cfg.get("pv_ac"), cfg.get("grid")) if i]
 
     series: dict[str, list[tuple[float, float]]] = {}
+    src = "leer"
     try:
         from homeassistant.components.recorder import get_instance
 
-        raw = await get_instance(hass).async_add_executor_job(
-            _history_rows, hass, start, now, ids
-        )
+        rec = get_instance(hass)
+        raw = await rec.async_add_executor_job(_stats_sync, hass, start, now, ids)
         for eid, rows in (raw or {}).items():
             pts = []
             for row in rows or []:
-                try:
-                    if isinstance(row, dict):
-                        val, lc = row.get("state"), row.get("last_changed")
-                    else:
-                        val, lc = row.state, row.last_changed
-                    pts.append((lc.timestamp(), float(val)))
-                except (TypeError, ValueError, AttributeError):
+                mean = row.get("mean")
+                if mean is None:
                     continue
-            series[eid] = pts
-    except Exception as err:  # Recorder aus, DB kaputt, ...
-        _LOGGER.warning("SmallTV: Historie nicht lesbar: %s", err)
+                try:
+                    pts.append((_ts(row.get("start")), float(mean)))
+                except (TypeError, ValueError):
+                    continue
+            if pts:
+                series[eid] = pts
+        src = "statistik"
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("SmallTV: Statistik nicht lesbar: %s", err)
+
+    if not any(series.values()):
+        try:
+            from homeassistant.components.recorder import get_instance
+
+            rec = get_instance(hass)
+            raw = await rec.async_add_executor_job(_states_sync, hass, start, now, ids)
+            for eid, rows in (raw or {}).items():
+                pts = []
+                for row in rows or []:
+                    try:
+                        val = row["state"] if isinstance(row, dict) else row.state
+                        lc = row["last_changed"] if isinstance(row, dict) else row.last_changed
+                        pts.append((_ts(lc), float(val)))
+                    except (TypeError, ValueError, KeyError, AttributeError):
+                        continue
+                if pts:
+                    series[eid] = pts
+            src = "recorder"
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("SmallTV: Recorder-Historie nicht lesbar: %s", err)
 
     pv_s = series.get(cfg.get("pv") or "", [])
     ac_s = series.get(cfg.get("pv_ac") or "", [])
@@ -131,18 +157,27 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
             break
 
     label_step = 6 if hours >= 12 else (3 if hours >= 6 else 1)
-    labels = []
-    for h in range(0, hours + 1, label_step):
-        labels.append(dt_util.as_local(start + dt.timedelta(hours=h)).strftime("%H"))
+    labels = [dt_util.as_local(start + dt.timedelta(hours=h)).strftime("%H")
+              for h in range(0, hours + 1, label_step)]
     if len(labels) > 9:
         labels = labels[::2]
+
+    _debug[key] = {
+        "quelle": src,
+        "punkte": {k: len(v) for k, v in series.items()},
+        "erster": {k: (dt_util.as_local(dt.datetime.fromtimestamp(v[0][0], dt.timezone.utc)).isoformat()
+                       if v else None) for k, v in series.items()},
+        "letzter": {k: (dt_util.as_local(dt.datetime.fromtimestamp(v[-1][0], dt.timezone.utc)).isoformat()
+                        if v else None) for k, v in series.items()},
+        "distinct_pv": len(set(pv_out)),
+    }
 
     result = {"pv": pv_out, "house": house_out, "scale": scale, "labels": labels}
     _cache[key] = (time.time(), result)
     return result
 
 
-async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24) -> dict:
+async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24, debug: bool = False) -> dict:
     st = read_states(hass, cfg)
     hist = await read_history(hass, cfg, hours)
 
@@ -162,7 +197,7 @@ async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24) -> dict
         except Exception:
             i3_age = ""
 
-    return {
+    payload = {
         "now": dt_util.as_local(dt_util.utcnow()).strftime("%H:%M"),
         "pv": round(val("pv")),
         "house": round(val("pv_ac") + val("grid")),
@@ -179,3 +214,6 @@ async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24) -> dict
         "hist": hist,
         "stale": [k for k, v in st.items() if v.get("v") is None],
     }
+    if debug:
+        payload["debug"] = _debug.get(f"hist:{hours}:" + ",".join(f"{k}={v}" for k, v in sorted(cfg.items())), {})
+    return payload
