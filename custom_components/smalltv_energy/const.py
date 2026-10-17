@@ -20,4 +20,4 @@ FIELDS = {
 POINTS = 48          # Stuetzpunkte im Verlauf
 HIST_TTL = 50.0      # Sekunden Cache fuer die Historie
 STATE_TTL = 15.0     # Sekunden Cache fuer die Momentanwerte
-SCALE_STEPS = (4000, 8000, 12000, 20000, 30000)
+SCALE_STEPS = (4000, 6000, 8000, 10000, 13000)   # Obergrenze 13 kW

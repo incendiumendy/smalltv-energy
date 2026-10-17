@@ -150,7 +150,7 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
         house_out.append(round(sum(sh) / len(sh)) if sh else 0)
 
     peak = max(pv_out + house_out + [1000])
-    scale = 40000
+    scale = SCALE_STEPS[-1]
     for limit in SCALE_STEPS:
         if peak <= limit * 0.92:
             scale = limit
