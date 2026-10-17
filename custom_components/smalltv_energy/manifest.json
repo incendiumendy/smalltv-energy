@@ -1,0 +1,13 @@
+{
+  "domain": "smalltv_energy",
+  "name": "SmallTV Energie",
+  "codeowners": [
+    "@andreas"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/andreas/smalltv-energy",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/andreas/smalltv-energy/issues",
+  "requirements": [],
+  "version": "1.0.0"
+}

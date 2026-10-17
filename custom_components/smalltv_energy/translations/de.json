@@ -1,0 +1,33 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SmallTV Energie",
+        "description": "Entities auswaehlen, die das Display anzeigen soll. Leere Felder werden mit 0 dargestellt.",
+        "data": {
+          "pv": "PV-Leistung (DC)",
+          "pv_ac": "Wechselrichter AC-Leistung",
+          "grid": "Netzleistung (Zaehler)",
+          "soc": "Batterie-Ladestand",
+          "batt": "Batterie-Leistung",
+          "today": "Tagesertrag",
+          "pool": "Pooltemperatur",
+          "out": "Aussentemperatur",
+          "hum": "Aussenluftfeuchte",
+          "i3": "i3 Ladestand"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "SmallTV Energie ist schon eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Entities anpassen",
+        "data": {}
+      }
+    }
+  }
+}
