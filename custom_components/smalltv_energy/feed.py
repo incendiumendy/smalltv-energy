@@ -145,7 +145,7 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
         for t in probes:
             a, g = sample(ac_s, t), sample(gr_s, t)
             if a is not None:
-                sh.append(max(0.0, a + (g or 0.0)))
+                sh.append(max(0.0, a - (g or 0.0)))   # g positiv = Einspeisung
         pv_out.append(round(sum(sp) / len(sp)) if sp else 0)
         house_out.append(round(sum(sh) / len(sh)) if sh else 0)
 
@@ -200,8 +200,9 @@ async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24, debug: 
     payload = {
         "now": dt_util.as_local(dt_util.utcnow()).strftime("%H:%M"),
         "pv": round(val("pv")),
-        "house": round(val("pv_ac") + val("grid")),
-        "grid": round(val("grid")),
+        # Netz-Sensor zaehlt positiv = Einspeisung, negativ = Bezug.
+        "house": round(val("pv_ac") - val("grid")),
+        "grid": round(-val("grid")),
         "soc": round(val("soc")),
         "batt": round(val("batt")),
         "today": round(val("today") * 10) / 10.0,
