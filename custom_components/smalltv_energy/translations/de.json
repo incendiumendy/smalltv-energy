@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "SmallTV Energie",
-        "description": "Entities auswaehlen, die das Display anzeigen soll. Leere Felder werden mit 0 dargestellt.",
+        "description": "Entities auswaehlen, die das Display anzeigt. Leere Felder werden als 0 dargestellt. Der key ist das Passwort im Feed-Link.",
         "data": {
           "pv": "PV-Leistung (DC)",
           "pv_ac": "Wechselrichter AC-Leistung",
@@ -14,7 +14,8 @@
           "pool": "Pooltemperatur",
           "out": "Aussentemperatur",
           "hum": "Aussenluftfeuchte",
-          "i3": "i3 Ladestand"
+          "i3": "i3 Ladestand",
+          "key": "Feed-Passwort (optional)"
         }
       }
     },
@@ -26,7 +27,19 @@
     "step": {
       "init": {
         "title": "Entities anpassen",
-        "data": {}
+        "data": {
+          "pv": "PV-Leistung (DC)",
+          "pv_ac": "Wechselrichter AC-Leistung",
+          "grid": "Netzleistung (Zaehler)",
+          "soc": "Batterie-Ladestand",
+          "batt": "Batterie-Leistung",
+          "today": "Tagesertrag",
+          "pool": "Pooltemperatur",
+          "out": "Aussentemperatur",
+          "hum": "Aussenluftfeuchte",
+          "i3": "i3 Ladestand",
+          "key": "Feed-Passwort"
+        }
       }
     }
   }
