@@ -80,9 +80,9 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
 
     series: dict[str, list[tuple[float, float]]] = {}
     src = "leer"
-    # Kurze Fenster leben von Rohzustaenden: die 5-Minuten-Statistik wuerde 96 Punkte
-    # auf 36 Bloecke stuetzen und jede Lastspitze zu einer Treppe machen.
-    use_raw = hours <= 6
+    # Immer Rohzustaende: die 5-Minuten-Statistik verschmiert kurze Lastspitzen ueber
+    # den ganzen Block (3,2 kW angezeigt, wo real 1,0 kW anlag).
+    use_raw = True
     try:
         if use_raw:
             raise RuntimeError("raw")
@@ -146,7 +146,8 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
     now_ts = now.timestamp()
     pv_out, house_out = [], []
     for i in range(POINTS):
-        probes = [t for t in (t0 + i * step + step * k / 4 for k in range(5)) if t <= now_ts]
+        # Rohdaten: Momentanwert je Punkt (keine Mittelung, sonst weichen Spitzen ab)
+        probes = [min(t0 + i * step, now_ts)]
         sp = [v for v in (sample(pv_s, t) for t in probes) if v is not None]
         sh = []
         for t in probes:
