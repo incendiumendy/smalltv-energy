@@ -135,11 +135,12 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
                 break
         return last
 
-    step = hours * 3600 / POINTS
+    step = hours * 3600 / (POINTS - 1)      # letzter Punkt = jetzt, nicht 30 min davor
     t0 = now.timestamp() - hours * 3600
+    now_ts = now.timestamp()
     pv_out, house_out = [], []
     for i in range(POINTS):
-        probes = [t0 + i * step + step * k / 4 for k in range(5)]
+        probes = [t for t in (t0 + i * step + step * k / 4 for k in range(5)) if t <= now_ts]
         sp = [v for v in (sample(pv_s, t) for t in probes) if v is not None]
         sh = []
         for t in probes:
@@ -196,6 +197,14 @@ async def build_payload(hass: HomeAssistant, cfg: dict, hours: int = 24, debug: 
             i3_age = f"{age/3600:.0f}h" if age >= 3600 else f"{age/60:.0f}m"
         except Exception:
             i3_age = ""
+
+    # Rechtes Kurvenende = aktueller Wert, sonst haengt die Kurve am alten Cache-Stand
+    try:
+        if hist.get("pv"):
+            hist["pv"][-1] = round(val("pv"))
+            hist["house"][-1] = round(val("pv_ac") - val("grid"))
+    except Exception:  # noqa: BLE001
+        pass
 
     payload = {
         "now": dt_util.as_local(dt_util.utcnow()).strftime("%H:%M"),
