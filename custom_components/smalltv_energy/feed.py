@@ -80,7 +80,12 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
 
     series: dict[str, list[tuple[float, float]]] = {}
     src = "leer"
+    # Kurze Fenster leben von Rohzustaenden: die 5-Minuten-Statistik wuerde 96 Punkte
+    # auf 36 Bloecke stuetzen und jede Lastspitze zu einer Treppe machen.
+    use_raw = hours <= 6
     try:
+        if use_raw:
+            raise RuntimeError("raw")
         from homeassistant.components.recorder import get_instance
 
         rec = get_instance(hass)
@@ -99,7 +104,8 @@ async def read_history(hass: HomeAssistant, cfg: dict, hours: int) -> dict:
                 series[eid] = pts
         src = "statistik"
     except Exception as err:  # noqa: BLE001
-        _LOGGER.warning("SmallTV: Statistik nicht lesbar: %s", err)
+        if not use_raw:
+            _LOGGER.warning("SmallTV: Statistik nicht lesbar: %s", err)
 
     if not any(series.values()):
         try:
